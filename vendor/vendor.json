@@ -1,0 +1,37 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "DYv6Q1+VfnUVxMwvk5IshAClLvw=",
+			"path": "github.com/Sirupsen/logrus",
+			"revision": "5e5dc898656f695e2a086b8e12559febbfc01562",
+			"revisionTime": "2017-05-15T10:45:16Z"
+		},
+		{
+			"checksumSHA1": "341tqz63qq5mx1uHggKKI6g5pKI=",
+			"path": "github.com/google/gopacket",
+			"revision": "f10e8ef82a38b32acce3de1d6cec5453a2a28c74",
+			"revisionTime": "2017-03-19T20:07:28Z"
+		},
+		{
+			"checksumSHA1": "ya8J9cG62UYf7m/vCTGQ1G5LNfI=",
+			"path": "github.com/google/gopacket/layers",
+			"revision": "f10e8ef82a38b32acce3de1d6cec5453a2a28c74",
+			"revisionTime": "2017-03-19T20:07:28Z"
+		},
+		{
+			"checksumSHA1": "gBH+9p7pMzemAVn5WQ6mGtkDg+s=",
+			"path": "github.com/google/gopacket/pcap",
+			"revision": "f10e8ef82a38b32acce3de1d6cec5453a2a28c74",
+			"revisionTime": "2017-03-19T20:07:28Z"
+		},
+		{
+			"checksumSHA1": "yFolYpsrXIjWE0UjR8ChC6Nmrhg=",
+			"path": "gopkg.in/urfave/cli.v2",
+			"revision": "61c3eb6ba1da1df17cd50f1456a9252d92bf5edd",
+			"revisionTime": "2017-04-24T21:45:55Z"
+		}
+	],
+	"rootPath": "github.com/mozhuli/kube-sniffer"
+}
