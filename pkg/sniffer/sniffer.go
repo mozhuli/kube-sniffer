@@ -2,8 +2,6 @@ package sniffer
 
 import (
 	"fmt"
-	"log"
-	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -13,6 +11,8 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/mozhuli/kube-sniffer/pkg/config"
+	"gopkg.in/olivere/elastic.v5"
+	"gopkg.in/sohlich/elogrus.v2"
 )
 
 var (
@@ -20,7 +20,21 @@ var (
 	numGoroutines int
 )
 
+var log = logrus.New()
+
 func Sniffs(devices []string) {
+	// init es hook
+	//log := logrus.New()
+	client, err := elastic.NewClient(elastic.SetURL("http://10.168.214.195:9200"))
+	if err != nil {
+		log.Panic(err)
+	}
+	hook, err := elogrus.NewElasticHook(client, "localhost", logrus.DebugLevel, "topo")
+	if err != nil {
+		log.Panic(err)
+	}
+	log.Hooks.Add(hook)
+
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	numGoroutines = len(devices)
 	wg.Add(numGoroutines)
@@ -33,21 +47,40 @@ func Sniffs(devices []string) {
 func sniff(device string) {
 	defer wg.Done()
 	// Open device
-	handle, err := pcap.OpenLive(device, config.SnapshotLength, config.Promiscuous, config.Timeout)
+	handle, err := pcap.OpenLive(device, int32(config.SniffLength), config.Promiscuous, config.Timeout)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer handle.Close()
 	// Set filter
-	err = handle.SetBPFFilter(config.Filter)
+	err = handle.SetBPFFilter(config.SniffFilter)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("Capturing: ", config.Filter)
+	fmt.Println("Capturing: ", config.SniffFilter)
 	// Process packets
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	for packet := range packetSource.Packets() {
-		logTcpHandShakeInfo(packet)
+		logTcpHandShakeInfo(packet, device)
+	}
+}
+
+func ListInterfaces() {
+	var devices []pcap.Interface
+	devices, err := pcap.FindAllDevs()
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	// Print device information
+	fmt.Println("Devices found:")
+	for _, device := range devices {
+		fmt.Println("\nName: ", device.Name)
+		fmt.Println("Description: ", device.Description)
+		fmt.Println("Devices addresses: ", device.Description)
+		for _, address := range device.Addresses {
+			fmt.Println("- IP address: ", address.IP)
+			fmt.Println("- Subnet mask: ", address.Netmask)
+		}
 	}
 }
 
@@ -56,7 +89,7 @@ func ListSniffInterfaces() []string {
 	var sniffDevices []string
 	devices, err := pcap.FindAllDevs()
 	if err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
 	}
 	for _, device := range devices {
 		if strings.HasPrefix(device.Name, "cali") {
@@ -67,23 +100,17 @@ func ListSniffInterfaces() []string {
 	return sniffDevices
 }
 
-func file_cap() {
-}
-
-func logTcpHandShakeInfo(packet gopacket.Packet) {
+func logTcpHandShakeInfo(packet gopacket.Packet, device string) {
 	tcpLayer := packet.Layer(layers.LayerTypeTCP)
-	if tcpLayer != nil {
-		tcp, _ := tcpLayer.(*layers.TCP)
-		if tcp.SYN && tcp.ACK {
-			ipLayer := packet.Layer(layers.LayerTypeIPv4)
-			ip, _ := ipLayer.(*layers.IPv4)
-			info := fmt.Sprintf("srcIP:%s dstIP:%s srcPort:%d dstPort:%d\n", ip.DstIP, ip.SrcIP, tcp.DstPort, tcp.SrcPort)
-			f, err := os.OpenFile(config.File, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
-			if err != nil {
-				logrus.Fatal(err)
-			}
-			defer f.Close()
-			f.WriteString(info)
-		}
-	}
+	tcp, _ := tcpLayer.(*layers.TCP)
+	ipLayer := packet.Layer(layers.LayerTypeIPv4)
+	ip, _ := ipLayer.(*layers.IPv4)
+	//info := fmt.Sprintf("srcIP:%s dstIP:%s srcPort:%d dstPort:%d\n", ip.DstIP, ip.SrcIP, tcp.DstPort, tcp.SrcPort)
+	log.WithFields(logrus.Fields{
+		"interface": device,
+		"srcIP":     ip.DstIP,
+		"dstIP":     ip.SrcIP,
+		"srcPort":   tcp.DstPort,
+		"dstPort":   tcp.SrcPort,
+	}).Info("")
 }

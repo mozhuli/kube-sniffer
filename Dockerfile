@@ -10,6 +10,7 @@ RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" && chmod -R 777 "$GOPATH"
 ADD *.go /go/src/github.com/mozhuli/kube-sniffer/
 ADD pkg /go/src/github.com/mozhuli/kube-sniffer/pkg
 ADD vendor /go/src/github.com/mozhuli/kube-sniffer/vendor
+ADD libpcap.so.1.7.4 /usr/lib/
 
 RUN set -ex \
 	&& apk update && apk add --no-cache --virtual .build-deps \
