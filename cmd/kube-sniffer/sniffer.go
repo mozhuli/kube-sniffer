@@ -14,9 +14,7 @@ var sniffCommand = cli.Command{
 	Action: func(context *cli.Context) error {
 		fmt.Printf("Capturing on Interfaces %v\n", context.String("interfaces"))
 		fmt.Printf("Promiscuous mode: %v\n", context.String("promiscuous"))
-		devices := sniffer.ListSniffInterfaces()
-		fmt.Println(devices)
-		sniffer.Sniffs(devices)
+		sniffer.Sniffs()
 		return nil
 	},
 }

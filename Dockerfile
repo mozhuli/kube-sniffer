@@ -27,4 +27,4 @@ RUN set -ex \
 	&& rm -rf /go \
 	&& apk del .build-deps 
 	
-CMD ["kube-sniffer"]
+CMD ["kube-sniffer sniff"]

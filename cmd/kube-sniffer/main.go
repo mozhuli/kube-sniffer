@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -140,12 +139,6 @@ func main() {
 				config.Debug = c.Debug
 			}
 		}
-
-		fmt.Println(config.ElasticsearchEndpoint)
-		fmt.Println(config.SniffInterfaces)
-		fmt.Println(config.SniffLength)
-		fmt.Println(config.SniffFilter)
-
 		if config.Debug {
 			logrus.SetLevel(logrus.DebugLevel)
 		}

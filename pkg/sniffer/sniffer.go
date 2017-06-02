@@ -4,27 +4,34 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/mozhuli/kube-sniffer/pkg/config"
+	"github.com/mozhuli/kube-sniffer/pkg/sets"
 	"gopkg.in/olivere/elastic.v5"
 	"gopkg.in/sohlich/elogrus.v2"
 )
 
-var (
-	wg            sync.WaitGroup
-	numGoroutines int
-)
-
 var log = logrus.New()
 
-func Sniffs(devices []string) {
+type Sniffer struct {
+	deviceSets sets.String
+}
+
+func New() *Sniffer {
+	devices := ListSniffInterfaces()
+	deviceSets := sets.StringKeySet(devices)
+	return &Sniffer{
+		deviceSets: deviceSets,
+	}
+}
+
+func initLogHook() {
 	// init es hook
-	//log := logrus.New()
 	client, err := elastic.NewClient(elastic.SetURL("http://10.168.214.195:9200"))
 	if err != nil {
 		log.Panic(err)
@@ -34,18 +41,47 @@ func Sniffs(devices []string) {
 		log.Panic(err)
 	}
 	log.Hooks.Add(hook)
-
-	runtime.GOMAXPROCS(runtime.NumCPU())
-	numGoroutines = len(devices)
-	wg.Add(numGoroutines)
-	for i := 0; i < numGoroutines; i++ {
-		go sniff(devices[i])
-	}
-	wg.Wait()
 }
 
-func sniff(device string) {
-	defer wg.Done()
+func (s *Sniffer) WatchDevices() {
+	for {
+		devices := ListSniffInterfaces()
+		liveDevices := sets.StringKeySet(devices)
+		// Get del devices
+		delDevices := s.deviceSets.Difference(liveDevices)
+		del := delDevices.List()
+		for _, name := range del {
+			s.deviceSets.Delete(name)
+		}
+		// Get add devices
+		addDevices := liveDevices.Difference(s.deviceSets)
+		add := addDevices.List()
+		for _, name := range add {
+			s.deviceSets.Insert(name)
+			go s.sniff(name)
+		}
+		time.Sleep(3 * time.Second)
+	}
+}
+
+func (s *Sniffer) Start() {
+	for device, _ := range s.deviceSets {
+		go s.sniff(device)
+	}
+}
+
+func Sniffs() {
+	initLogHook()
+	sniffer := New()
+	fmt.Println(len(sniffer.deviceSets))
+	sniffer.Start()
+	fmt.Println("2")
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	sniffer.WatchDevices()
+}
+
+func (s *Sniffer) sniff(device string) {
+	defer logrus.Infof("sniff on %s existed", device)
 	// Open device
 	handle, err := pcap.OpenLive(device, int32(config.SniffLength), config.Promiscuous, config.Timeout)
 	if err != nil {
@@ -84,17 +120,15 @@ func ListInterfaces() {
 	}
 }
 
-func ListSniffInterfaces() []string {
-	//var devices []pcap.Interface
-	var sniffDevices []string
+func ListSniffInterfaces() map[string]struct{} {
+	sniffDevices := make(map[string]struct{})
 	devices, err := pcap.FindAllDevs()
 	if err != nil {
 		logrus.Fatal(err)
 	}
 	for _, device := range devices {
 		if strings.HasPrefix(device.Name, "cali") {
-			fmt.Println(device.Name)
-			sniffDevices = append(sniffDevices, device.Name)
+			sniffDevices[device.Name] = struct{}{}
 		}
 	}
 	return sniffDevices
@@ -105,12 +139,11 @@ func logTcpHandShakeInfo(packet gopacket.Packet, device string) {
 	tcp, _ := tcpLayer.(*layers.TCP)
 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
 	ip, _ := ipLayer.(*layers.IPv4)
-	//info := fmt.Sprintf("srcIP:%s dstIP:%s srcPort:%d dstPort:%d\n", ip.DstIP, ip.SrcIP, tcp.DstPort, tcp.SrcPort)
 	log.WithFields(logrus.Fields{
 		"interface": device,
 		"srcIP":     ip.DstIP,
 		"dstIP":     ip.SrcIP,
 		"srcPort":   tcp.DstPort,
 		"dstPort":   tcp.SrcPort,
-	}).Info("")
+	}).Info("logging to elasticsearch")
 }
