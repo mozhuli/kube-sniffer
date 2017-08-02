@@ -53,7 +53,7 @@ func main() {
 		cli.StringFlag{
 			Name:   "filter, f",
 			EnvVar: "SNIFFER_FILTER",
-			Value:  "tcp[13] == 0x12",
+			Value:  "tcp[13] == 0x12 and src net 10.168",
 			Usage:  "the BPF syntax parameters to sniff on",
 		},
 		cli.IntFlag{

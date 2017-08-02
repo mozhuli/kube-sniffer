@@ -2,6 +2,7 @@ package sniffer
 
 import (
 	"fmt"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -18,10 +19,12 @@ import (
 
 var log = logrus.New()
 
+// Sniffer is the internal representation of the sets of sniffed interfaces
 type Sniffer struct {
 	deviceSets sets.String
 }
 
+// New init the sniffer
 func New() *Sniffer {
 	devices := ListSniffInterfaces()
 	deviceSets := sets.StringKeySet(devices)
@@ -30,19 +33,28 @@ func New() *Sniffer {
 	}
 }
 
+func getHostname() string {
+	hostname, _ := os.Hostname()
+	return hostname
+}
+
 func initLogHook() {
 	// init es hook
-	client, err := elastic.NewClient(elastic.SetURL("http://10.168.214.195:9200"))
+	client, err := elastic.NewClient(elastic.SetURL("http://10.10.101.145:9200"))
 	if err != nil {
 		log.Panic(err)
 	}
-	hook, err := elogrus.NewElasticHook(client, "localhost", logrus.DebugLevel, "topo")
+	logrus.Info("Inited es client")
+	hostname := getHostname()
+	hook, err := elogrus.NewElasticHook(client, hostname, logrus.DebugLevel, "topo")
 	if err != nil {
 		log.Panic(err)
 	}
 	log.Hooks.Add(hook)
+	logrus.Info("Added log hook")
 }
 
+// WatchDevices watch the sniffed interfaces.
 func (s *Sniffer) WatchDevices() {
 	for {
 		devices := ListSniffInterfaces()
@@ -64,43 +76,47 @@ func (s *Sniffer) WatchDevices() {
 	}
 }
 
+// Start sniffing interfaces.
 func (s *Sniffer) Start() {
-	for device, _ := range s.deviceSets {
+	for device := range s.deviceSets {
 		go s.sniff(device)
 	}
 }
 
+// Sniffs init and sniff
 func Sniffs() {
 	initLogHook()
 	sniffer := New()
-	fmt.Println(len(sniffer.deviceSets))
+	logrus.Infof("%d interfaces need to be sniffed", len(sniffer.deviceSets))
 	sniffer.Start()
-	fmt.Println("2")
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	sniffer.WatchDevices()
 }
 
 func (s *Sniffer) sniff(device string) {
-	defer logrus.Infof("sniff on %s existed", device)
+	defer logrus.Infof("Sniff on %s existed", device)
 	// Open device
 	handle, err := pcap.OpenLive(device, int32(config.SniffLength), config.Promiscuous, config.Timeout)
 	if err != nil {
-		log.Fatal(err)
+		logrus.Warningf("Failed open device %s: %v", device, err)
+		return
 	}
 	defer handle.Close()
 	// Set filter
 	err = handle.SetBPFFilter(config.SniffFilter)
 	if err != nil {
-		log.Fatal(err)
+		logrus.Warningf("Failed set BPF fliter: %v", err)
+		return
 	}
-	fmt.Println("Capturing: ", config.SniffFilter)
+	logrus.Infof("Capturing packet %s on device %s", config.SniffFilter, device)
 	// Process packets
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	for packet := range packetSource.Packets() {
-		logTcpHandShakeInfo(packet, device)
+		logTCPHandShakeInfo(packet, device)
 	}
 }
 
+// ListInterfaces list the host interfaces
 func ListInterfaces() {
 	var devices []pcap.Interface
 	devices, err := pcap.FindAllDevs()
@@ -120,6 +136,7 @@ func ListInterfaces() {
 	}
 }
 
+// ListSniffInterfaces list the interfaces which to be sniffed
 func ListSniffInterfaces() map[string]struct{} {
 	sniffDevices := make(map[string]struct{})
 	devices, err := pcap.FindAllDevs()
@@ -134,13 +151,14 @@ func ListSniffInterfaces() map[string]struct{} {
 	return sniffDevices
 }
 
-func logTcpHandShakeInfo(packet gopacket.Packet, device string) {
+func logTCPHandShakeInfo(packet gopacket.Packet, device string) {
 	tcpLayer := packet.Layer(layers.LayerTypeTCP)
 	tcp, _ := tcpLayer.(*layers.TCP)
 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
 	ip, _ := ipLayer.(*layers.IPv4)
 	log.WithFields(logrus.Fields{
 		"interface": device,
+		"link":      ip.DstIP.String() + "_" + ip.SrcIP.String(),
 		"srcIP":     ip.DstIP,
 		"dstIP":     ip.SrcIP,
 		"srcPort":   tcp.DstPort,
